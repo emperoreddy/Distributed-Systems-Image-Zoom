@@ -1,0 +1,72 @@
+services:
+  # C02 - ActiveMQ Broker
+  c02:
+    image: rmohr/activemq:latest
+    container_name: c02
+    ports:
+      - "61616:61616" # ActiveMQ broker port
+      - "8161:8161"   # ActiveMQ web console port
+    networks:
+      - jms-network
+
+  # C01 - JMS Publisher
+  c01:
+    build:
+      context: ./C01-JMS-Publisher
+      dockerfile: Dockerfile
+    container_name: c01
+    ports:
+      - "8081:8080" # Expose Tomcat port for C01
+    environment:
+      - JAVA_HOME=/opt/software/jdk-21
+    depends_on:
+      - c02 # Ensure ActiveMQ is running before C01 starts
+    networks:
+      - jms-network
+
+  # C03 - MDB RMI Consumer
+  c03:
+    build:
+      context: ./C03-MDB-RMI
+      dockerfile: Dockerfile
+    container_name: c03
+    ports:
+      - "8082:8080" # Expose Tomcat port for C03
+    environment:
+      - JAVA_HOME=/opt/software/jdk-21
+    depends_on:
+      - c02 # Ensure ActiveMQ is running before C03 starts
+      - c04 # Ensure RMI Server C04 is running before C03 starts
+      - c05 # Ensure RMI Server C05 is running before C03 starts
+    networks:
+      - jms-network
+
+  # C04 - RMI Server
+  c04:
+    build:
+      context: ./C04-RMI-Server
+      dockerfile: Dockerfile
+    container_name: c04
+    ports:
+      - "1099:1099" # Expose RMI port for C04
+    environment:
+      - JAVA_HOME=/opt/software/jdk-21
+    networks:
+      - jms-network
+
+  # C05 - RMI Server
+  c05:
+    build:
+      context: ./C05-RMI-Server
+      dockerfile: Dockerfile
+    container_name: c05
+    ports:
+      - "1100:1099" # Expose RMI port for C05 (mapped to 1100 externally)
+    environment:
+      - JAVA_HOME=/opt/software/jdk-21
+    networks:
+      - jms-network
+
+networks:
+  jms-network:
+    driver: bridge

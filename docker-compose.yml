@@ -1,72 +1,138 @@
+# docker-compose.yml
+
 services:
-  # C02 - ActiveMQ Broker
-  c02:
-    image: rmohr/activemq:latest
-    container_name: c02
+  # c01: JMS Publisher (WAR on Tomcat)
+  c01-jms-publisher:
+    build: ./c01-jms-publisher
+    container_name: c01-jms-publisher
     ports:
-      - "61616:61616" # ActiveMQ broker port
-      - "8161:8161"   # ActiveMQ web console port
-    networks:
-      - jms-network
-
-  # C01 - JMS Publisher
-  c01:
-    build:
-      context: ./C01-JMS-Publisher
-      dockerfile: Dockerfile
-    container_name: c01
-    ports:
-      - "8081:8080" # Expose Tomcat port for C01
+      - "8081:8080"  # Host:Container
     environment:
-      - JAVA_HOME=/opt/software/jdk-21
+      - BROKER_URL=tcp://c02-activemq:61616
+      - TOPIC_NAME=imageTopic
+      - UPLOAD_DIR=/opt/uploaded-images
+    volumes:
+      - c01_uploads:/opt/uploaded-images
+    networks:
+      - project-network
     depends_on:
-      - c02 # Ensure ActiveMQ is running before C01 starts
-    networks:
-      - jms-network
+      - c02-activemq
 
-  # C03 - MDB RMI Consumer
-  c03:
-    build:
-      context: ./C03-MDB-RMI
-      dockerfile: Dockerfile
-    container_name: c03
+  # c02: ActiveMQ (Using Official Image)
+  c02-activemq:
+    image: apache/activemq-classic  # Use official image or valid rmohr tag
+    container_name: c02-activemq
     ports:
-      - "8082:8080" # Expose Tomcat port for C03
+      - "61616:61616"  # JMS
+      - "8161:8161"    # ActiveMQ Web Console
     environment:
-      - JAVA_HOME=/opt/software/jdk-21
+      - ACTIVEMQ_ADMIN_LOGIN=admin
+      - ACTIVEMQ_ADMIN_PASSWORD=admin
+    volumes:
+      - c02_data:/opt/activemq/data
+    networks:
+      - project-network
+
+  # c03: MDB & RMI Client (Standalone Java Application)
+  c03-mdb-rmi:
+    build: ./c03-mdb-rmi
+    container_name: c03-mdb-rmi
+    ports:
+      - "8083:8083"  # Adjust if your application listens on a different port
+    environment:
+      - BROKER_URL=tcp://c02-activemq:61616
+      - TOPIC_NAME=imageTopic
+      - RMI_SERVER_C04=c04-rmi-server
+      - RMI_PORT_C04=1099
+      - RMI_SERVER_C05=c05-rmi-server
+      - RMI_PORT_C05=1100
+      - C06_UPLOAD_URL=http://c06-nodejs:3000/api/bmp/upload
+    networks:
+      - project-network
     depends_on:
-      - c02 # Ensure ActiveMQ is running before C03 starts
-      - c04 # Ensure RMI Server C04 is running before C03 starts
-      - c05 # Ensure RMI Server C05 is running before C03 starts
-    networks:
-      - jms-network
+      - c02-activemq
+      - c04-rmi-server
+      - c05-rmi-server
+      - c06-nodejs
 
-  # C04 - RMI Server
-  c04:
-    build:
-      context: ./C04-RMI-Server
-      dockerfile: Dockerfile
-    container_name: c04
+  # c04: RMI Server
+  c04-rmi-server:
+    build: ./c04-rmi-server
+    container_name: c04-rmi-server
     ports:
-      - "1099:1099" # Expose RMI port for C04
-    environment:
-      - JAVA_HOME=/opt/software/jdk-21
+      - "1099:1099"
     networks:
-      - jms-network
+      - project-network
+    depends_on:
+      - c02-activemq
 
-  # C05 - RMI Server
-  c05:
-    build:
-      context: ./C05-RMI-Server
-      dockerfile: Dockerfile
-    container_name: c05
+  # c05: RMI Server
+  c05-rmi-server:
+    build: ./c05-rmi-server
+    container_name: c05-rmi-server
     ports:
-      - "1100:1099" # Expose RMI port for C05 (mapped to 1100 externally)
-    environment:
-      - JAVA_HOME=/opt/software/jdk-21
+      - "1100:1100"
     networks:
-      - jms-network
+      - project-network
+    depends_on:
+      - c02-activemq
+
+  # c06: Node.js Application
+  c06-nodejs:
+    build: ./c06-nodejs
+    container_name: c06-nodejs
+    ports:
+      - "3000:3000"
+    environment:
+      # MongoDB connection
+      - MONGO_HOST=c06-mongodb
+      - MONGO_PORT=27017
+      - MONGO_DB=snmpdb
+      # MySQL connection
+      - MYSQL_HOST=c06-mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=youruser
+      - MYSQL_PASSWORD=yourpassword
+      - MYSQL_DATABASE=imagesdb
+    networks:
+      - project-network
+    depends_on:
+      - c06-mongodb
+      - c06-mysql
+
+  # c06-mongodb: MongoDB Service
+  c06-mongodb:
+    image: mongo:6.0
+    container_name: c06-mongodb
+    ports:
+      - "27017:27017"
+    networks:
+      - project-network
+    volumes:
+      - c06_mongo_data:/data/db
+
+  # c06-mysql: MySQL Service
+  c06-mysql:
+    image: mysql:8.0
+    container_name: c06-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=imagesdb
+      - MYSQL_USER=youruser
+      - MYSQL_PASSWORD=yourpassword
+    ports:
+      - "3306:3306"  # Ensure no host service is using this port or change it to "3307:3306"
+    networks:
+      - project-network
+    volumes:
+      - c06_mysql_data:/var/lib/mysql
 
 networks:
-  jms-network:
+  project-network:
     driver: bridge
+
+volumes:
+  c01_uploads:
+  c02_data:
+  c06_mongo_data:
+  c06_mysql_data:

@@ -19,8 +19,8 @@ import java.util.Base64;
 @MultipartConfig
 public class ImageUploadServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
-    private static final String BROKER_URL = "tcp://localhost:61616";
-//    private static final String BROKER_URL = "tcp://c02:61616";
+    // private static final String BROKER_URL = "tcp://localhost:61616";
+    private static final String BROKER_URL = "tcp://c02:61616";
     private static final String TOPIC_NAME = "imageTopic";
     private static final String UPLOAD_DIR = "/opt/uploaded-images";
 
@@ -33,7 +33,8 @@ public class ImageUploadServlet extends HttpServlet {
     }
 
     @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
         response.setContentType("text/html");
         response.getWriter().write(
             "<!DOCTYPE html>" +
@@ -127,10 +128,9 @@ public class ImageUploadServlet extends HttpServlet {
         );
     }
 
-
-
     @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
         Part filePart = request.getPart("file");
         String zoomLevel = request.getParameter("zoom");
 
@@ -160,8 +160,10 @@ public class ImageUploadServlet extends HttpServlet {
 
         try {
             publishToJMS(encodedImage, zoomLevel);
-            response.getWriter().write("Image saved at: " + savedFile.getAbsolutePath() +
-                                       "<br>Image and zoom level published successfully!</br>");
+            response.getWriter().write(
+                "Image saved at: " + savedFile.getAbsolutePath() +
+                "<br>Image and zoom level published successfully!</br>"
+            );
         } catch (Exception e) {
             e.printStackTrace();
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);

@@ -1,18 +1,17 @@
 {
-  "name": "c06-nodejs",
+  "name": "container-6",
   "version": "1.0.0",
-  "description": "REST API for BMP image and SNMP data",
-  "main": "app.js",
+  "description": "Node.js container for SNMP data (MongoDB) and BMP BLOB storage (MySQL).",
+  "main": "server.js",
   "scripts": {
-    "start": "node app.js"
-  },
-  "dependencies": {
-    "body-parser": "^1.20.3",
-    "express": "^4.21.2",
-    "mongodb": "^5.9.2",
-    "punycode": "^2.3.1"
+    "start": "node server.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "author": "Amortitu Bogdan",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.0.3",
+    "mysql2": "^3.1.1"
+  }
 }

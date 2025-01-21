@@ -1,15 +1,24 @@
+# Use the base image with Java installed
 FROM critoma/linux-u20-dev-security-ism
 
-ENV PATH=$PATH:/opt/software/apache-tomcat-10.0.20/bin
-ENV JAVA_HOME=/opt/software/jdk-21
+# Set JAVA_HOME and update PATH
+ENV JAVA_HOME=/opt/software/jdk-17.0.2
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-# Create directory for uploaded images if needed
-RUN mkdir -p /opt/uploaded-images && \
-    chmod 777 /opt/uploaded-images
+# Set working directory
+WORKDIR /app
 
-# Copy the WAR file
-COPY C03-MDB-RMI.war /opt/software/apache-tomcat-10.0.20/webapps/
+# Copy the JAR file
+COPY C03-MDB-RMI.jar /app/C03-MDB-RMI.jar
 
-EXPOSE 8082
+# Copy the lib directory
+COPY src/main/webapp/WEB-INF/lib/ /app/lib/ 
 
-CMD ["catalina.sh", "run"]
+# Set classpath to include all JARs in lib and the application JAR
+ENV CLASSPATH=app/lib/*:/app/C03-MDB-RMI.jar
+
+# Expose application port if applicable (e.g., 8083)
+EXPOSE 8083
+
+# Run the application
+CMD ["java", "-jar", "C03-MDB-RMI.jar"]

@@ -5,6 +5,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const mysql = require("mysql2/promise");
+const cors = require("cors");
 
 // ------------------------------------------------------------------
 // 1) Environment Variables (adjust as needed or via Docker Compose)
@@ -28,8 +29,16 @@ const MYSQL_DATABASE = process.env.MYSQL_DATABASE || "imagesdb";
 // ------------------------------------------------------------------
 const app = express();
 
+// Configure CORS to allow requests from your frontend
+app.use(cors({
+    origin: 'http://localhost:8081', 
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'X-Unique-ID']
+}));
+
+
 // Parse request body as raw data for BMP uploads (limit as needed)
-app.use(express.raw({ type: "application/octet-stream", limit: "50mb" }));
+app.use(express.raw({ type: "application/octet-stream", limit: "100mb" }));
 
 // If you want JSON parsing for other routes
 app.use(express.json());

@@ -19,8 +19,8 @@ import java.util.Base64;
 @MultipartConfig
 public class ImageUploadServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
-    // private static final String BROKER_URL = "tcp://localhost:61616";
-    private static final String BROKER_URL = "tcp://c02:61616";
+//    private static final String BROKER_URL = "tcp://localhost:61616";
+     private static final String BROKER_URL = "tcp://c02-activemq:61616";
     private static final String TOPIC_NAME = "imageTopic";
     private static final String UPLOAD_DIR = "/opt/uploaded-images";
 
@@ -160,16 +160,15 @@ public class ImageUploadServlet extends HttpServlet {
 
         try {
             publishToJMS(encodedImage, zoomLevel);
-            response.getWriter().write(
-                "Image saved at: " + savedFile.getAbsolutePath() +
-                "<br>Image and zoom level published successfully!</br>"
-            );
+            // Redirect to ws-test.html after successful upload and message publishing
+            response.sendRedirect("ws-test.html");
         } catch (Exception e) {
             e.printStackTrace();
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             response.getWriter().write("Failed to publish message to JMS.");
         }
     }
+
 
     private void publishToJMS(String imageBase64, String zoomLevel) throws JMSException {
         ConnectionFactory factory = new ActiveMQConnectionFactory(BROKER_URL);

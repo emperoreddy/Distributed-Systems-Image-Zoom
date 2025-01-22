@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Zoomed Images</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        #controls {
+            margin-bottom: 20px;
+            text-align: right;
+        }
+        #controls button {
+            padding: 10px 20px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s;
+        }
+        #controls button:hover {
+            background-color: #005f6a;
+        }
+        #images-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .image-item {
+            position: relative;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 320px;
+        }
+        .image-item img {
+            max-width: 100%;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .buttons {
+            display: flex;
+            justify-content: space-between;
+        }
+        .buttons a, .buttons button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+        .buttons a:hover, .buttons button:hover {
+            background-color: #45a049;
+        }
+        .buttons a.download-btn {
+            background-color: #f44336;
+        }
+        .buttons a.download-btn:hover {
+            background-color: #da190b;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button onclick="goBack()">Back to Upload</button>
+    </div>
+    <h1>Zoomed Images</h1>
+    <div id="images-container"></div>
+
+    <script>
+        // Construct WebSocket URL
+        const wsUrl = `ws://${location.host}${location.pathname.replace('ws-test.html','')}ws`;
+        console.log("WebSocket URL:", wsUrl);
+        const socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+            console.log("WebSocket connected.");
+        };
+
+        socket.onclose = () => {
+            console.log("WebSocket closed.");
+        };
+
+        socket.onerror = (err) => {
+            console.error("WebSocket error:", err);
+            alert("WebSocket connection error. Please try refreshing the page.");
+        };
+
+        socket.onmessage = (msg) => {
+            console.log("Received notification:", msg.data);
+            const pictureId = msg.data;
+            displayImage(pictureId);
+        };
+
+        /**
+         * Navigates back to the Image Upload page.
+         */
+        function goBack() {
+            window.location.href = 'ImageUploadServlet';
+        }
+
+        /**
+         * Fetches and displays the image based on pictureId.
+         * @param {string} pictureId - The ID of the picture to display.
+         */
+        function displayImage(pictureId) {
+            console.log("Displaying image with pictureId:", pictureId);
+            // Adjust the imageUrl based on your setup
+            const imageUrl = `http://localhost:3000/api/bmp/${pictureId}`;
+            console.log("Image URL:", imageUrl);
+
+            const container = document.getElementById('images-container');
+            const div = document.createElement('div');
+            div.className = 'image-item';
+
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = `Zoomed Image ${pictureId}`;
+            img.onload = () => console.log(`Image ${pictureId} loaded successfully.`);
+            img.onerror = () => console.error(`Failed to load image ${pictureId}.`);
+
+            const buttonsDiv = document.createElement('div');
+            buttonsDiv.className = 'buttons';
+
+            // Download Button
+  /*          const downloadLink = document.createElement('a');
+            downloadLink.href = imageUrl;
+            downloadLink.textContent = 'Download';
+            downloadLink.className = 'download-btn';
+            downloadLink.setAttribute('download', `zoomed_image_${pictureId}.png`); // Suggests a default filename
+*/
+          
+            
+            const downloadButton = document.createElement('button');
+            downloadButton.textContent = 'Download';
+            downloadButton.onclick = () => {
+                fetch(imageUrl)
+                    .then(response => response.blob())
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `zoomed_image_${pictureId}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                    })
+                    .catch(err => console.error('Download error:', err));
+            };
+            
+
+            // Append Download Link
+            // buttonsDiv.appendChild(downloadLink);
+            buttonsDiv.appendChild(downloadButton); // If using JavaScript download button
+
+            div.appendChild(img);
+            div.appendChild(buttonsDiv);
+            container.appendChild(div);
+        }
+    </script>
+</body>
+</html>

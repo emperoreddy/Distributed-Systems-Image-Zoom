@@ -2,7 +2,8 @@ package eu.deic.mdb;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import jakarta.jms.*;
-import eu.deic.mdb.ZoomService;
+
+import eu.deic.rmi.ZoomService;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
@@ -18,41 +19,47 @@ import javax.imageio.ImageIO;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+// JSON library for parsing C06's response
+import org.json.*;
+
 /**
- * ImageProcessorConsumer listens to the JMS topic, processes incoming BMP images by splitting
- * them into two halves, sending each half to separate RMI servers for zooming, reassembling
- * the processed halves, and sending the final image to Container 6 (C06).
+ * ImageProcessorConsumer listens to the JMS topic, processes incoming BMP images by
+ * splitting them into two halves, sending each half to separate RMI servers for zooming,
+ * reassembling the processed halves, and sending the final image to Container 6 (C06).
  */
 public class ImageProcessorConsumer {
 
-    private static final String BROKER_URL = "tcp://c02:61616"; // ActiveMQ broker URL
-    private static final String TOPIC_NAME = "imageTopic";       // JMS Topic name
+    private static final Logger LOGGER = Logger.getLogger(ImageProcessorConsumer.class.getName());
 
-    // RMI Servers (Docker service names)
-    private static final String RMI_SERVER_C04 = "c04-rmi-server"; // Service name for C04
-    private static final String RMI_SERVER_C05 = "c05-rmi-server"; // Service name for C05
-    private static final int C04_PORT = 1099;            // RMI port for C04
-    private static final int C05_PORT = 1100;            // RMI port for C05
+    // ActiveMQ
+    private static final String BROKER_URL = "tcp://c02-activemq:61616"; // or c02-activemq container
+    private static final String TOPIC_NAME = "imageTopic";
+    private static final String NOTIFICATION_TOPIC_NAME = "imageNotifications";
 
-    // C06 REST API endpoint
+    // RMI Servers
+    private static final String RMI_SERVER_C04 = "c04-rmi-server";
+    private static final int C04_PORT = 1099;
+    private static final String RMI_SERVER_C05 = "c05-rmi-server";
+    private static final int C05_PORT = 1100;
+
+    // C06 upload endpoint
     private static final String C06_UPLOAD_URL = "http://c06-nodejs:3000/api/bmp/upload";
 
-    // Logger for logging information and errors
-    private static final Logger LOGGER = Logger.getLogger(ImageProcessorConsumer.class.getName());
+    // JMS session references
+    private static Session session;
+    private static Connection connection;
 
     public static void main(String[] args) {
         final AtomicReference<Connection> connectionRef = new AtomicReference<>();
         final AtomicReference<Session> sessionRef = new AtomicReference<>();
 
         try {
-            // 1) Connect to ActiveMQ
             ConnectionFactory factory = new ActiveMQConnectionFactory(BROKER_URL);
-            Connection connection = factory.createConnection();
+            connection = factory.createConnection();
             connectionRef.set(connection);
             connection.start();
 
-            // 2) Create JMS session and subscribe to the topic
-            Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
             sessionRef.set(session);
 
             Topic topic = session.createTopic(TOPIC_NAME);
@@ -61,34 +68,31 @@ public class ImageProcessorConsumer {
             LOGGER.info("Waiting for messages on topic: " + TOPIC_NAME);
 
             consumer.setMessageListener(message -> {
-                try {
-                    if (message instanceof TextMessage) {
+                if (message instanceof TextMessage) {
+                    try {
                         TextMessage textMessage = (TextMessage) message;
                         String content = textMessage.getText();
                         LOGGER.info("Received message: " + content);
 
-                        // Parse the message to extract image data and zoom level
-                        String[] parts = content.split(";");
-                        if (parts.length < 2 || !parts[0].startsWith("Image=") || !parts[1].startsWith("Zoom=")) {
+                        // Parse out the image and zoom
+                        if (!content.contains("Image=") || !content.contains("Zoom=")) {
                             LOGGER.severe("Invalid message format: " + content);
                             return;
                         }
-
+                        String[] parts = content.split(";");
                         String imageBase64 = parts[0].substring("Image=".length());
                         int zoomLevel = Integer.parseInt(parts[1].substring("Zoom=".length()));
 
-                        // Decode the Base64 image data
                         byte[] imageData = Base64.getDecoder().decode(imageBase64);
-                        LOGGER.info("Image received with zoom level: " + zoomLevel);
-
-                        // Process the image
                         processImage(imageData, zoomLevel);
 
-                    } else {
-                        LOGGER.severe("Unsupported message type received.");
+                    } catch (JMSException e) {
+                        LOGGER.log(Level.SEVERE, "JMS error", e);
+                    } catch (Exception e) {
+                        LOGGER.log(Level.SEVERE, "Error processing message", e);
                     }
-                } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "Error processing message", e);
+                } else {
+                    LOGGER.severe("Unsupported message type received.");
                 }
             });
 
@@ -107,140 +111,116 @@ public class ImageProcessorConsumer {
         }
     }
 
-    /**
-     * Processes the image by splitting it, sending halves to RMI servers, reassembling,
-     * and sending the final image to C06.
-     *
-     * @param imageData  The original BMP image data as a byte array.
-     * @param zoomLevel  The zoom percentage to apply.
-     */
     private static void processImage(byte[] imageData, int zoomLevel) {
         try {
-            // 1) Decode the entire BMP into a BufferedImage
-            BufferedImage originalImage = ImageIO.read(new ByteArrayInputStream(imageData));
-            if (originalImage == null) {
-                throw new IOException("Failed to decode BMP image. The image data may be corrupted or in an unsupported format.");
+            BufferedImage original = ImageIO.read(new ByteArrayInputStream(imageData));
+            if (original == null) {
+                throw new IOException("Failed to decode BMP image. Possibly corrupt.");
             }
-            LOGGER.info("Image size before processing: " + imageData.length + " bytes");
-            LOGGER.info("Original image dimensions: " + originalImage.getWidth() + "x" + originalImage.getHeight());
+            LOGGER.info("Original image size: " + imageData.length + " bytes");
+            LOGGER.info("Dimensions: " + original.getWidth() + "x" + original.getHeight());
 
-            // 2) Split the image into two halves (top and bottom)
-            int width = originalImage.getWidth();
-            int height = originalImage.getHeight();
-            BufferedImage topHalf = originalImage.getSubimage(0, 0, width, height / 2);
-            BufferedImage bottomHalf = originalImage.getSubimage(0, height / 2, width, height - (height / 2));
+            int w = original.getWidth();
+            int h = original.getHeight();
 
-            // 3) Encode each half to a byte array (e.g., PNG format)
-            byte[] topHalfData = bufferedImageToBytes(topHalf, "png");
-            byte[] bottomHalfData = bufferedImageToBytes(bottomHalf, "png");
+            // Split
+            BufferedImage topHalf = original.getSubimage(0, 0, w, h / 2);
+            BufferedImage bottomHalf = original.getSubimage(0, h / 2, w, h - h / 2);
 
-            // 4) Send each half to a different RMI server for processing
-            ZoomService zoomServiceC04 = lookupZoomService(RMI_SERVER_C04, C04_PORT);
-            ZoomService zoomServiceC05 = lookupZoomService(RMI_SERVER_C05, C05_PORT);
+            byte[] topBytes = bufferedImageToBytes(topHalf, "png");
+            byte[] bottomBytes = bufferedImageToBytes(bottomHalf, "png");
 
-            LOGGER.info("Sending top half to RMI server " + RMI_SERVER_C04 + ":" + C04_PORT);
-            byte[] processedTop = zoomServiceC04.zoomImage(topHalfData, zoomLevel);
-            LOGGER.info("Received processed top half from " + RMI_SERVER_C04);
+            // RMI
+            ZoomService zc04 = lookupZoomService(RMI_SERVER_C04, C04_PORT);
+            ZoomService zc05 = lookupZoomService(RMI_SERVER_C05, C05_PORT);
 
-            LOGGER.info("Sending bottom half to RMI server " + RMI_SERVER_C05 + ":" + C05_PORT);
-            byte[] processedBottom = zoomServiceC05.zoomImage(bottomHalfData, zoomLevel);
-            LOGGER.info("Received processed bottom half from " + RMI_SERVER_C05);
+            byte[] processedTop = zc04.zoomImage(topBytes, zoomLevel);
+            byte[] processedBottom = zc05.zoomImage(bottomBytes, zoomLevel);
 
-            // 5) Decode the processed halves back into BufferedImages
-            BufferedImage processedTopImg = ImageIO.read(new ByteArrayInputStream(processedTop));
-            BufferedImage processedBottomImg = ImageIO.read(new ByteArrayInputStream(processedBottom));
+            BufferedImage ptImg = ImageIO.read(new ByteArrayInputStream(processedTop));
+            BufferedImage pbImg = ImageIO.read(new ByteArrayInputStream(processedBottom));
 
-            if (processedTopImg == null || processedBottomImg == null) {
-                throw new IOException("Failed to decode processed image halves. They may be corrupted or in an unsupported format.");
+            if (ptImg == null || pbImg == null) {
+                throw new IOException("Failed to decode processed images.");
             }
 
-            // 6) Reassemble the processed halves into a single image
-            int newHeight = processedTopImg.getHeight() + processedBottomImg.getHeight();
-            BufferedImage combinedImage = new BufferedImage(processedTopImg.getWidth(), newHeight, BufferedImage.TYPE_INT_RGB);
-            Graphics2D g2d = combinedImage.createGraphics();
-            g2d.drawImage(processedTopImg, 0, 0, null);
-            g2d.drawImage(processedBottomImg, 0, processedTopImg.getHeight(), null);
+            // Reassemble
+            int newHeight = ptImg.getHeight() + pbImg.getHeight();
+            BufferedImage combined = new BufferedImage(ptImg.getWidth(), newHeight, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g2d = combined.createGraphics();
+            g2d.drawImage(ptImg, 0, 0, null);
+            g2d.drawImage(pbImg, 0, ptImg.getHeight(), null);
             g2d.dispose();
 
-            // 7) Convert the final combined image back to a byte array (e.g., PNG format)
-            byte[] finalImageData = bufferedImageToBytes(combinedImage, "png");
+            // Convert final image to bytes
+            byte[] finalBytes = bufferedImageToBytes(combined, "png");
 
-            // 8) Send the final image to Container 6 (C06) via REST API
-            sendToC06(finalImageData);
-            LOGGER.info("Final image sent to C06 successfully.");
+            // Send to C06
+            sendToC06(finalBytes);
 
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Error during image processing", e);
+            LOGGER.log(Level.SEVERE, "Error processing image", e);
         }
     }
 
-    /**
-     * Converts a BufferedImage to a byte array in the specified format.
-     *
-     * @param image   The BufferedImage to convert.
-     * @param format  The image format (e.g., "png", "jpg").
-     * @return        The byte array representation of the image.
-     * @throws IOException If an error occurs during writing.
-     */
-    private static byte[] bufferedImageToBytes(BufferedImage image, String format) throws IOException {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            boolean success = ImageIO.write(image, format, baos);
-            if (!success) {
-                throw new IOException("Failed to write image in format: " + format);
-            }
-            return baos.toByteArray();
-        }
+    private static byte[] bufferedImageToBytes(BufferedImage img, String format) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(img, format, baos);
+        return baos.toByteArray();
     }
 
-    /**
-     * Looks up the ZoomService RMI service from the specified host and port.
-     *
-     * @param host  The hostname or service name of the RMI server.
-     * @param port  The port number of the RMI registry.
-     * @return      The ZoomService stub.
-     * @throws Exception If the service cannot be found or connected.
-     */
     private static ZoomService lookupZoomService(String host, int port) throws Exception {
         Registry registry = LocateRegistry.getRegistry(host, port);
         return (ZoomService) registry.lookup("ZoomService");
     }
 
-    /**
-     * Sends the final processed image to Container 6 (C06) via a REST API endpoint.
-     *
-     * @param imageData The final image data as a byte array.
-     */
-    private static void sendToC06(byte[] imageData) {
-        HttpURLConnection connection = null;
+    private static void sendToC06(byte[] imageData) throws IOException, JMSException {
+        HttpURLConnection conn = null;
+        int pictureId = -1;
         try {
             URL url = new URL(C06_UPLOAD_URL);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setDoOutput(true);
-            connection.setRequestMethod("POST");
-            connection.setRequestProperty("Content-Type", "application/octet-stream");
-            connection.setRequestProperty("Content-Length", String.valueOf(imageData.length));
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setDoOutput(true);
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/octet-stream");
+            conn.setRequestProperty("Content-Length", String.valueOf(imageData.length));
 
-            // Write the image data to the request body
             try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 baos.write(imageData);
-                connection.getOutputStream().write(baos.toByteArray());
+                conn.getOutputStream().write(baos.toByteArray());
             }
 
-            // Get the response code to ensure the request was successful
-            int responseCode = connection.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK || 
-                responseCode == HttpURLConnection.HTTP_CREATED) {
-                LOGGER.info("Image successfully uploaded to C06. Response Code: " + responseCode);
+            int responseCode = conn.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_CREATED) {
+                LOGGER.info("Image successfully uploaded to C06. Response code: " + responseCode);
+                // read the response to get pictureId
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(conn.getInputStream().readAllBytes())) {
+                    String respString = new String(bais.readAllBytes());
+                    LOGGER.info("C06 Response: " + respString);
+                    org.json.JSONObject json = new org.json.JSONObject(respString);
+                    pictureId = json.optInt("pictureId", -1);
+                } catch (Exception ex) {
+                    LOGGER.log(Level.SEVERE, "Error parsing response from C06", ex);
+                }
             } else {
                 LOGGER.severe("Failed to upload image to C06. Response Code: " + responseCode);
             }
-
-        } catch (IOException e) {
-            LOGGER.log(Level.SEVERE, "Error sending image to C06", e);
         } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            if (conn != null) conn.disconnect();
         }
+
+        if (pictureId != -1) {
+            publishNotification(pictureId);
+        }
+    }
+
+    private static void publishNotification(int pictureId) throws JMSException {
+        // Publish "NewImage:<pictureId>" to imageNotifications topic
+        Topic notifTopic = session.createTopic(NOTIFICATION_TOPIC_NAME);
+        MessageProducer producer = session.createProducer(notifTopic);
+        TextMessage msg = session.createTextMessage("NewImage:" + pictureId);
+        producer.send(msg);
+        LOGGER.info("Notification sent for picture ID: " + pictureId);
+        producer.close();
     }
 }

@@ -18,21 +18,15 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-// JSON library for parsing C06's response
 import org.json.*;
 
-/**
- * ImageProcessorConsumer listens to the JMS topic, processes incoming BMP images by
- * splitting them into two halves, sending each half to separate RMI servers for zooming,
- * reassembling the processed halves, and sending the final image to Container 6 (C06).
- */
+
 public class ImageProcessorConsumer {
 
     private static final Logger LOGGER = Logger.getLogger(ImageProcessorConsumer.class.getName());
 
     // ActiveMQ
-    private static final String BROKER_URL = "tcp://c02-activemq:61616"; // or c02-activemq container
+    private static final String BROKER_URL = "tcp://c02-activemq:61616"; 
     private static final String TOPIC_NAME = "imageTopic";
     private static final String NOTIFICATION_TOPIC_NAME = "imageNotifications";
 
@@ -45,7 +39,7 @@ public class ImageProcessorConsumer {
     // C06 upload endpoint
     private static final String C06_UPLOAD_URL = "http://c06-nodejs:3000/api/bmp/upload";
 
-    // JMS session references
+    // JMS session
     private static Session session;
     private static Connection connection;
 
@@ -99,7 +93,7 @@ public class ImageProcessorConsumer {
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Failed to initialize ImageProcessorConsumer", e);
         } finally {
-            // Clean up JMS resources on shutdown
+            
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     if (sessionRef.get() != null) sessionRef.get().close();
@@ -144,7 +138,7 @@ public class ImageProcessorConsumer {
                 throw new IOException("Failed to decode processed images.");
             }
 
-            // Reassemble
+            // Assemble img
             int newHeight = ptImg.getHeight() + pbImg.getHeight();
             BufferedImage combined = new BufferedImage(ptImg.getWidth(), newHeight, BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = combined.createGraphics();
@@ -152,7 +146,6 @@ public class ImageProcessorConsumer {
             g2d.drawImage(pbImg, 0, ptImg.getHeight(), null);
             g2d.dispose();
 
-            // Convert final image to bytes
             byte[] finalBytes = bufferedImageToBytes(combined, "png");
 
             // Send to C06
@@ -215,7 +208,6 @@ public class ImageProcessorConsumer {
     }
 
     private static void publishNotification(int pictureId) throws JMSException {
-        // Publish "NewImage:<pictureId>" to imageNotifications topic
         Topic notifTopic = session.createTopic(NOTIFICATION_TOPIC_NAME);
         MessageProducer producer = session.createProducer(notifTopic);
         TextMessage msg = session.createTextMessage("NewImage:" + pictureId);

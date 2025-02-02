@@ -30,7 +30,6 @@ public class WebSocketServer {
     @OnMessage
     public void onMessage(String message, Session session) {
         System.out.println("Message from " + session.getId() + ": " + message);
-        // Typically no action needed unless you want 2-way communication
     }
 
     public static void broadcast(String msg) {

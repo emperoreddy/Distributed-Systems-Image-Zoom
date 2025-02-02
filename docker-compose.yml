@@ -18,9 +18,9 @@ services:
     depends_on:
       - c02-activemq
 
-  # c02: ActiveMQ (Using Official Image)
+  # c02: ActiveMQ 
   c02-activemq:
-    image: apache/activemq-classic  # Use official image or valid rmohr tag
+    image: apache/activemq-classic  
     container_name: c02-activemq
     ports:
       - "61616:61616"  # JMS
@@ -33,12 +33,12 @@ services:
     networks:
       - project-network
 
-  # c03: MDB & RMI Client (Standalone Java Application)
+  # c03: MDB & RMI Client 
   c03-mdb-rmi:
     build: ./c03-mdb-rmi
     container_name: c03-mdb-rmi
     ports:
-      - "8083:8083"  # Adjust if your application listens on a different port
+      - "8083:8083" 
     environment:
       - BROKER_URL=tcp://c02-activemq:61616
       - TOPIC_NAME=imageTopic
@@ -77,18 +77,18 @@ services:
     depends_on:
       - c02-activemq
 
-  # c06: Node.js Application
+  # c06: Node.js 
   c06-nodejs:
     build: ./c06-nodejs
     container_name: c06-nodejs
     ports:
       - "3000:3000"
     environment:
-      # MongoDB connection
+      # MongoDB 
       - MONGO_HOST=c06-mongodb
       - MONGO_PORT=27017
       - MONGO_DB=snmpdb
-      # MySQL connection
+      # MySQL 
       - MYSQL_HOST=c06-mysql
       - MYSQL_PORT=3306
       - MYSQL_USER=youruser
@@ -100,7 +100,7 @@ services:
       - c06-mongodb
       - c06-mysql
 
-  # c06-mongodb: MongoDB Service
+  # c06-mongodb
   c06-mongodb:
     image: mongo:6.0
     container_name: c06-mongodb
@@ -111,7 +111,7 @@ services:
     volumes:
       - c06_mongo_data:/data/db
 
-  # c06-mysql: MySQL Service
+  # c06-mysql
   c06-mysql:
     image: mysql:8.0
     container_name: c06-mysql
@@ -121,7 +121,7 @@ services:
       - MYSQL_USER=youruser
       - MYSQL_PASSWORD=yourpassword
     ports:
-      - "3306:3306"  # Ensure no host service is using this port or change it to "3307:3306"
+      - "3306:3306"  
     networks:
       - project-network
     volumes:

@@ -13,13 +13,11 @@ import javax.imageio.ImageIO;
 
 public class ZoomServiceImpl extends UnicastRemoteObject implements ZoomService {
 
-    /**
-	 * 
-	 */
+
 	private static final long serialVersionUID = 1L;
 	private static final Logger LOGGER = Logger.getLogger(ZoomServiceImpl.class.getName());
 
-    // Constructor
+
     public ZoomServiceImpl() throws RemoteException {
         super();
     }
@@ -29,8 +27,7 @@ public class ZoomServiceImpl extends UnicastRemoteObject implements ZoomService 
         LOGGER.info("Received request to zoom image with zoom level: " + zoomPercent);
 
         logImageData(imageData);
-        
-        // Validate inputs
+  
         if (imageData == null || imageData.length == 0) {
             String errorMessage = "Invalid image data: null or empty";
             LOGGER.severe(errorMessage);
@@ -43,27 +40,27 @@ public class ZoomServiceImpl extends UnicastRemoteObject implements ZoomService 
         }
 
         try {
-            // Log the image size before processing
+          
             LOGGER.info("Image size before processing: " + imageData.length + " bytes");
 
-            // Convert byte[] to BufferedImage
+          
             BufferedImage originalImage = readImageFromBytes(imageData);
             if (originalImage == null) {
                 throw new RemoteException("Image could not be read. Invalid format or corrupted data.");
             }
 
-            // Log the image dimensions
+        
             LOGGER.info("Original image dimensions: " + originalImage.getWidth() + "x" + originalImage.getHeight());
 
-            // Resize the image
+      
             BufferedImage zoomedImage = resizeImage(originalImage, zoomPercent);
 
-            // Convert the zoomed image back to byte array
+            
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             ImageIO.write(zoomedImage, "jpg", outputStream);
             byte[] zoomedImageData = outputStream.toByteArray();
 
-            // Log the image size after processing
+           
             LOGGER.info("Zoomed image size: " + zoomedImageData.length + " bytes");
 
             return zoomedImageData;
@@ -74,7 +71,7 @@ public class ZoomServiceImpl extends UnicastRemoteObject implements ZoomService 
         }
     }
 
-    // Read image from byte array with enhanced error handling
+   
     private BufferedImage readImageFromBytes(byte[] imageData) {
         try (ByteArrayInputStream inputStream = new ByteArrayInputStream(imageData)) {
             return ImageIO.read(inputStream);
@@ -84,7 +81,7 @@ public class ZoomServiceImpl extends UnicastRemoteObject implements ZoomService 
         }
     }
 
-    // Resize image using zoom percentage
+   
     private BufferedImage resizeImage(BufferedImage originalImage, int zoomPercent) {
         int newWidth = originalImage.getWidth() * zoomPercent / 100;
         int newHeight = originalImage.getHeight() * zoomPercent / 100;

@@ -121,7 +121,7 @@ services:
       - MYSQL_USER=youruser
       - MYSQL_PASSWORD=yourpassword
     ports:
-      - "3306:3306"  
+      - "3307:3306"  
     networks:
       - project-network
     volumes:
